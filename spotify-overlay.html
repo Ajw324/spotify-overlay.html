@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEURO//SOUND — Stream Overlay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  /* ── CONFIG: paste your Spotify app credentials below ── */
+  /* See README comment at bottom of file                   */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: transparent;
+    width: fit-content;
+    height: fit-content;
+    overflow: hidden;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  :root {
+    --cp-black:   #07070f;
+    --cp-dark:    #0d0b1a;
+    --cp-panel:   #110e1f;
+    --cp-purple:  #b06cff;
+    --cp-purple2: #d4a8ff;
+    --cp-violet:  #7c3aed;
+    --cp-pink:    #e040fb;
+    --cp-dim-p:   rgba(176,108,255,0.13);
+    --cp-dim-pk:  rgba(224,64,251,0.13);
+    --cp-border:  rgba(176,108,255,0.35);
+  }
+
+  .player {
+    background: var(--cp-dark);
+    border: 1px solid var(--cp-border);
+    border-radius: 4px;
+    width: 400px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* scanlines */
+  .player::after {
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none; z-index: 10;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent, transparent 3px,
+      rgba(176,108,255,0.018) 4px
+    );
+  }
+
+  /* corner brackets */
+  .corner {
+    position: absolute; width: 10px; height: 10px;
+    border-color: var(--cp-purple); border-style: solid; z-index: 20;
+  }
+  .tl { top:0; left:0;  border-width: 1.5px 0 0 1.5px; }
+  .tr { top:0; right:0; border-width: 1.5px 1.5px 0 0; }
+  .bl { bottom:0; left:0;  border-width: 0 0 1.5px 1.5px; }
+  .br { bottom:0; right:0; border-width: 0 1.5px 1.5px 0; }
+
+  /* header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 13px;
+    border-bottom: 1px solid rgba(176,108,255,0.2);
+    background: rgba(0,0,0,0.35);
+  }
+  .logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px; font-weight: 900;
+    color: var(--cp-purple);
+    letter-spacing: 4px;
+  }
+  .status {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 9px; letter-spacing: 1px;
+    color: rgba(176,108,255,0.45);
+  }
+  .live-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cp-pink);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+
+  /* album + info */
+  .main-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 13px 10px;
+    border-bottom: 1px solid rgba(176,108,255,0.1);
+  }
+  .art {
+    width: 68px; height: 68px; flex-shrink: 0;
+    border: 1px solid var(--cp-border);
+    border-radius: 3px;
+    overflow: hidden;
+    background: var(--cp-black);
+    position: relative;
+  }
+  .art img {
+    width: 100%; height: 100%; object-fit: cover;
+    display: block;
+  }
+  .art-placeholder {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .art-placeholder svg { width: 100%; height: 100%; }
+
+  .info { flex: 1; min-width: 0; }
+  .track {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px; font-weight: 700;
+    color: var(--cp-purple2);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+  .artist {
+    font-size: 11px; color: var(--cp-pink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    margin-bottom: 3px; letter-spacing: 1px;
+  }
+  .album-lbl {
+    font-size: 9px; color: rgba(176,108,255,0.4);
+    letter-spacing: 1.5px; text-transform: uppercase;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* visualizer */
+  .viz {
+    display: flex; align-items: flex-end; gap: 2px;
+    padding: 0 13px;
+    height: 36px;
+    border-bottom: 1px solid rgba(176,108,255,0.1);
+    overflow: hidden;
+  }
+  .vbar {
+    flex: 1; min-height: 2px; border-radius: 1px 1px 0 0;
+    background: var(--cp-purple);
+    transition: height 0.08s ease;
+  }
+  .vbar:nth-child(even) { background: rgba(176,108,255,0.45); }
+  .vbar:nth-child(3n)   { background: var(--cp-pink); opacity: 0.7; }
+
+  /* progress */
+  .prog-section { padding: 10px 13px 0; }
+  .time-row {
+    display: flex; justify-content: space-between;
+    font-size: 9px; color: rgba(176,108,255,0.45);
+    margin-bottom: 5px; letter-spacing: 1px;
+  }
+  .prog-track {
+    height: 2px; background: rgba(255,255,255,0.07);
+    border-radius: 2px; position: relative;
+  }
+  .prog-fill {
+    height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, var(--cp-violet), var(--cp-purple), var(--cp-pink));
+    position: relative; transition: width 0.8s linear;
+  }
+  .prog-fill::after {
+    content: '';
+    position: absolute; right: -4px; top: -3px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--cp-purple2);
+    box-shadow: 0 0 5px var(--cp-purple);
+  }
+
+  /* controls */
+  .controls {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; padding: 10px 13px 9px;
+  }
+  .cbtn {
+    background: none; border: none; cursor: default;
+    color: rgba(176,108,255,0.45);
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 3px;
+  }
+  .cbtn svg { width: 16px; height: 16px; fill: currentColor; }
+  .cbtn.active { color: var(--cp-pink); }
+  .play-btn {
+    width: 44px; height: 44px;
+    border: 1.5px solid var(--cp-purple);
+    color: var(--cp-purple);
+    border-radius: 3px;
+    background: rgba(176,108,255,0.08);
+  }
+  .play-btn svg { width: 20px; height: 20px; }
+
+  /* auth screen */
+  .auth-screen {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px;
+    padding: 28px 20px;
+    text-align: center;
+  }
+  .auth-logo {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px; font-weight: 900;
+    color: var(--cp-purple2);
+    letter-spacing: 5px;
+  }
+  .auth-sub {
+    font-size: 10px; color: rgba(176,108,255,0.45);
+    letter-spacing: 2px; line-height: 1.6;
+  }
+  .auth-btn {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px; letter-spacing: 2px;
+    color: var(--cp-purple2);
+    background: rgba(176,108,255,0.1);
+    border: 1px solid var(--cp-border);
+    padding: 10px 22px; border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .auth-btn:hover { background: rgba(176,108,255,0.22); border-color: var(--cp-purple); }
+
+  /* idle */
+  .idle-msg {
+    font-size: 10px; color: rgba(176,108,255,0.35);
+    letter-spacing: 2px; text-align: center;
+    padding: 4px 0 2px;
+  }
+
+  /* nothing playing state */
+  .nothing {
+    font-size: 10px; color: rgba(176,108,255,0.35);
+    letter-spacing: 1.5px; margin-bottom: 2px;
+  }
+</style>
+</head>
+<body>
+
+<div class="player" id="player">
+  <div class="corner tl"></div><div class="corner tr"></div>
+  <div class="corner bl"></div><div class="corner br"></div>
+
+  <!-- AUTH SCREEN (shown before login) -->
+  <div id="auth-screen" class="auth-screen" style="display:none">
+    <div class="auth-logo">NEURO//SOUND</div>
+    <div class="auth-sub">SPOTIFY NEURAL LINK<br>OVERLAY v2.0</div>
+    <button class="auth-btn" onclick="doAuth()">⚡ CONNECT TO SPOTIFY</button>
+  </div>
+
+  <!-- PLAYER UI (shown when authenticated) -->
+  <div id="player-ui" style="display:none">
+    <div class="header">
+      <div class="logo">NEURO//SOUND</div>
+      <div class="status"><div class="live-dot"></div><span id="status-txt">SYNCING</span></div>
+    </div>
+
+    <div class="main-row">
+      <div class="art" id="art-wrap">
+        <div class="art-placeholder" id="art-placeholder">
+          <svg viewBox="0 0 68 68" xmlns="http://www.w3.org/2000/svg">
+            <rect width="68" height="68" fill="#07070f"/>
+            <circle cx="34" cy="34" r="26" fill="none" stroke="#b06cff" stroke-width="0.5" opacity="0.4"/>
+            <circle cx="34" cy="34" r="17" fill="none" stroke="#e040fb" stroke-width="0.5" opacity="0.35"/>
+            <circle cx="34" cy="34" r="9" fill="none" stroke="#b06cff" stroke-width="0.5" opacity="0.3"/>
+            <circle cx="34" cy="34" r="4" fill="#e040fb" opacity="0.8"/>
+            <line x1="0" y1="34" x2="68" y2="34" stroke="#b06cff" stroke-width="0.3" opacity="0.2"/>
+            <line x1="34" y1="0" x2="34" y2="68" stroke="#b06cff" stroke-width="0.3" opacity="0.2"/>
+          </svg>
+        </div>
+        <img id="art-img" style="display:none" alt="Album art">
+      </div>
+      <div class="info">
+        <div class="track" id="track-name">AWAITING SIGNAL...</div>
+        <div class="artist" id="artist-name">—</div>
+        <div class="album-lbl" id="album-name">NO PLAYBACK DETECTED</div>
+      </div>
+    </div>
+
+    <div class="viz" id="viz"></div>
+
+    <div class="prog-section">
+      <div class="time-row">
+        <span id="t-cur">0:00</span>
+        <span id="t-total">0:00</span>
+      </div>
+      <div class="prog-track">
+        <div class="prog-fill" id="prog" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <!-- shuffle -->
+      <div class="cbtn" id="btn-shuffle">
+        <svg viewBox="0 0 24 24"><path d="M18 4l3 3-3 3M6 7h15M18 20l3-3-3-3M6 17h15M3 7h.01M3 17h.01" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <!-- prev -->
+      <div class="cbtn">
+        <svg viewBox="0 0 24 24"><path d="M19 5L9 12l10 7V5zM5 5v14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <!-- play/pause -->
+      <div class="cbtn play-btn" id="btn-play">
+        <svg viewBox="0 0 24 24" id="play-icon"><path d="M5 3l14 9-14 9V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+      </div>
+      <!-- next -->
+      <div class="cbtn">
+        <svg viewBox="0 0 24 24"><path d="M5 5l10 7-10 7V5zM19 5v14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <!-- repeat -->
+      <div class="cbtn" id="btn-repeat">
+        <svg viewBox="0 0 24 24"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//  CONFIGURATION — fill these in before hosting
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+const CLIENT_ID    = 'YOUR_SPOTIFY_CLIENT_ID';       // from developer.spotify.com
+const REDIRECT_URI = 'YOUR_HOSTED_URL/spotify-overlay.html'; // must match your Spotify app settings
+const SCOPES = 'user-read-currently-playing user-read-playback-state';
+const POLL_MS = 3000; // how often to check Spotify (ms)
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+// ── PKCE helpers ──────────────────────────────────────
+function b64url(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)))
+    .replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+}
+async function sha256(plain) {
+  return crypto.subtle.digest('SHA-256', new TextEncoder().encode(plain));
+}
+function rand(len) {
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  return b64url(arr);
+}
+
+async function doAuth() {
+  const verifier  = rand(64);
+  const challenge = b64url(await sha256(verifier));
+  localStorage.setItem('pkce_verifier', verifier);
+  const url = 'https://accounts.spotify.com/authorize?' + new URLSearchParams({
+    client_id: CLIENT_ID, response_type: 'code',
+    redirect_uri: REDIRECT_URI, scope: SCOPES,
+    code_challenge_method: 'S256', code_challenge: challenge
+  });
+  window.location = url;
+}
+
+async function exchangeCode(code) {
+  const verifier = localStorage.getItem('pkce_verifier');
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({
+      grant_type: 'authorization_code', code,
+      redirect_uri: REDIRECT_URI, client_id: CLIENT_ID,
+      code_verifier: verifier
+    })
+  });
+  const data = await res.json();
+  if (data.access_token) {
+    storeTokens(data);
+    window.history.replaceState({}, '', window.location.pathname);
+    return true;
+  }
+  return false;
+}
+
+function storeTokens(data) {
+  localStorage.setItem('sp_access',  data.access_token);
+  localStorage.setItem('sp_refresh', data.refresh_token);
+  localStorage.setItem('sp_expires', Date.now() + data.expires_in * 1000);
+}
+
+async function refreshToken() {
+  const refresh = localStorage.getItem('sp_refresh');
+  if (!refresh) return false;
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {'Content-Type':'application/x-www-form-urlencoded'},
+    body: new URLSearchParams({
+      grant_type: 'refresh_token', refresh_token: refresh, client_id: CLIENT_ID
+    })
+  });
+  const data = await res.json();
+  if (data.access_token) { storeTokens(data); return true; }
+  return false;
+}
+
+async function getToken() {
+  const exp = parseInt(localStorage.getItem('sp_expires') || '0');
+  if (Date.now() > exp - 60000) await refreshToken();
+  return localStorage.getItem('sp_access');
+}
+
+// ── Spotify polling ────────────────────────────────────
+let lastId = null;
+
+async function fetchNowPlaying() {
+  const token = await getToken();
+  if (!token) return;
+  try {
+    const res = await fetch('https://api.spotify.com/v1/me/player/currently-playing', {
+      headers: { Authorization: 'Bearer ' + token }
+    });
+    if (res.status === 204) { setIdle(); return; }
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d || !d.item) { setIdle(); return; }
+    updatePlayer(d);
+  } catch(e) { console.warn('Spotify fetch error', e); }
+}
+
+function setIdle() {
+  document.getElementById('track-name').textContent  = 'AWAITING SIGNAL...';
+  document.getElementById('artist-name').textContent = '—';
+  document.getElementById('album-name').textContent  = 'NO PLAYBACK DETECTED';
+  document.getElementById('t-cur').textContent   = '0:00';
+  document.getElementById('t-total').textContent = '0:00';
+  document.getElementById('prog').style.width = '0%';
+  document.getElementById('status-txt').textContent = 'IDLE';
+  setArt(null);
+  setPlaying(false);
+  lastId = null;
+}
+
+function fmtMs(ms) {
+  const s = Math.floor(ms / 1000);
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+
+function updatePlayer(d) {
+  const item = d.item;
+  document.getElementById('track-name').textContent  = item.name;
+  document.getElementById('artist-name').textContent = item.artists.map(a=>a.name).join(', ');
+  document.getElementById('album-name').textContent  = item.album.name;
+  document.getElementById('t-cur').textContent   = fmtMs(d.progress_ms);
+  document.getElementById('t-total').textContent = fmtMs(item.duration_ms);
+  const pct = (d.progress_ms / item.duration_ms) * 100;
+  document.getElementById('prog').style.width = Math.min(pct,100).toFixed(2) + '%';
+  document.getElementById('status-txt').textContent = d.is_playing ? 'LIVE' : 'PAUSED';
+  setPlaying(d.is_playing);
+
+  // update art only on track change
+  if (item.id !== lastId) {
+    lastId = item.id;
+    const imgs = item.album.images;
+    setArt(imgs && imgs.length ? imgs[0].url : null);
+  }
+
+  // shuffle/repeat indicators
+  document.getElementById('btn-shuffle').classList.toggle('active', d.shuffle_state);
+  document.getElementById('btn-repeat').classList.toggle('active', d.repeat_state !== 'off');
+}
+
+function setArt(url) {
+  const img = document.getElementById('art-img');
+  const ph  = document.getElementById('art-placeholder');
+  if (url) {
+    img.src = url;
+    img.style.display = 'block';
+    ph.style.display  = 'none';
+  } else {
+    img.style.display = 'none';
+    ph.style.display  = 'flex';
+  }
+}
+
+function setPlaying(playing) {
+  const icon = document.getElementById('play-icon');
+  if (playing) {
+    icon.innerHTML = '<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/>';
+  } else {
+    icon.innerHTML = '<path d="M5 3l14 9-14 9V3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>';
+  }
+}
+
+// ── Visualizer ─────────────────────────────────────────
+const vizEl = document.getElementById('viz');
+const N = 32;
+const bars = [], targets = [];
+for (let i = 0; i < N; i++) {
+  const b = document.createElement('div');
+  b.className = 'vbar'; b.style.height = '2px';
+  vizEl.appendChild(b); bars.push(b); targets.push(2);
+}
+let vizActive = false;
+function animateViz() {
+  for (let i=0; i<N; i++) {
+    const bell = 1 - Math.pow((2*i/(N-1))-1, 2)*0.35;
+    targets[i] = vizActive ? Math.round(3 + Math.random()*26*bell) : 2;
+  }
+}
+function renderViz() {
+  for (let i=0; i<N; i++) {
+    const cur = parseInt(bars[i].style.height)||2;
+    bars[i].style.height = Math.round(cur + (targets[i]-cur)*0.38) + 'px';
+  }
+}
+setInterval(animateViz, 120);
+setInterval(renderViz, 55);
+
+// check if status is live to drive visualizer
+setInterval(() => {
+  vizActive = document.getElementById('status-txt').textContent === 'LIVE';
+}, 500);
+
+// ── Boot ───────────────────────────────────────────────
+async function boot() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+
+  if (code) {
+    const ok = await exchangeCode(code);
+    if (!ok) { showAuth(); return; }
+  }
+
+  const token = localStorage.getItem('sp_access');
+  if (!token) { showAuth(); return; }
+
+  showPlayer();
+  await fetchNowPlaying();
+  setInterval(fetchNowPlaying, POLL_MS);
+}
+
+function showAuth()   {
+  document.getElementById('auth-screen').style.display = 'flex';
+  document.getElementById('player-ui').style.display   = 'none';
+}
+function showPlayer() {
+  document.getElementById('auth-screen').style.display = 'none';
+  document.getElementById('player-ui').style.display   = 'block';
+}
+
+boot();
+</script>
+
+<!--
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SETUP README
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. CREATE A SPOTIFY APP
+   → Go to: https://developer.spotify.com/dashboard
+   → Click "Create app"
+   → Name: anything (e.g. "Stream Overlay")
+   → Redirect URI: the exact URL where you will host this file
+     e.g. https://yourname.github.io/overlay/spotify-overlay.html
+   → Enable "Web API"
+
+2. FILL IN THE CONFIG at the top of the <script> block:
+   CLIENT_ID    = your app's Client ID (shown on the dashboard)
+   REDIRECT_URI = the same URL you added in step 1
+
+3. HOST THE FILE
+   GitHub Pages (free & easy):
+   - Create a repo, push this file, enable Pages in Settings
+   Netlify / Vercel: drag & drop the file, get the URL, paste it as REDIRECT_URI
+
+4. ADD AS BROWSER SOURCE IN OBS / STREAMLABS
+   - Add Browser Source
+   - URL: your hosted URL
+   - Width: 400, Height: ~195 (auto-fits to content)
+   - Tick "Transparent background" / Custom CSS: body { background: transparent; }
+
+5. FIRST RUN
+   - Open the hosted URL in a browser
+   - Click "CONNECT TO SPOTIFY" — log in once
+   - Tokens are stored in localStorage, auto-refresh every hour
+   - OBS will keep the session alive as long as the browser source persists
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+-->
+</body>
+</html>
